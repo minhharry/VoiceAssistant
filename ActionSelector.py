@@ -14,21 +14,25 @@ class Action:
         return f"Action: {self.name}, Description: {self.description}, Vietnamese Description: {self.vietnamese_description}, Example: {self.example_command}, Keyword: {self.keyword}"
 
 class LLMActionSelector:
-    def __init__(self, actions: list[Action], model="gemma3:1b", api_url="http://localhost:11434/api/generate"):
+    def __init__(self, actions: list[Action], model="llama3.2", api_url="http://localhost:11434/api/generate"):
+        self.debug = False
         self.model = model
         self.api_url = api_url
         self.actions = actions
         
         self.base_prompt_template = (
-"""You are an AI model tasked with classifying user commands into one of the following actions:
+"""You are an AI model tasked with classifying user's command into one of the following actions:  
 {action_list}
+- "unknown": If the user's command does not match any of the defined actions.
 
-Based on the user's input command, return the appropriate action as a single keyword from the list above. 
-If the command does not match any of the defined actions, you must return \"unknown\", do not make up new keywords. 
-Return only one of the above keywords, do not include further explanation.
+Classification Rules:  
+1. If the user's command clearly refers to an action, return the appropriate action.  
+2. If user's command refers to any other device or topic, return only "unknown". Do not attempt to generalize.  
+3. You must not guess or infer new actions beyond the listed above.  
+4. Return only one of the predefined keywords without explanation.  
 
 Desired input and output examples:
-User command -> Desired output:
+User's command -> Desired output:
 {examples}
 
 """
@@ -47,6 +51,8 @@ User command -> Desired output:
     
     def generate_action(self, user_command: str):
         prompt = self.prompt + f'User command: "{user_command.lower()}"\nDesired output: '
+        if self.debug:
+            print(prompt)
         data = {
             "model": self.model,
             "prompt": prompt,
@@ -85,5 +91,5 @@ if __name__ == "__main__":
         Action("turn_off_fan", "Turn off the fan", "tắt quạt", "hãy tắt quạt ngay", "tắt quạt"),
     ]
     action_selector = LLMActionSelector(action_lst)
-    result = action_selector.generate_action("mở đèn đi bạn ê.")
+    result = action_selector.generate_action("Bật đèn đi bạn ê.")
     print(result)
