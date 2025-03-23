@@ -30,7 +30,7 @@ Classification Rules:
 3. You must not guess or infer new actions beyond the listed above.  
 4. Return only one of the predefined keywords without explanation.  
 
-Desired input and output examples:
+User's command input and desired output examples:
 User's command -> Desired output:
 {examples}
 
@@ -54,7 +54,7 @@ User's command -> Desired output:
         return self.base_prompt_template.format(action_list=action_list, examples=examples)
     
     def generate_action(self, user_command: str):
-        prompt = self.prompt + f'User command: "{user_command.lower()}"\nDesired output: '
+        prompt = self.prompt + f'User\'s command: "{user_command.lower()}"\nDesired output: '
         if self.debug:
             print("[DEBUG] prompt: " + prompt)
         data = {
@@ -117,6 +117,71 @@ class LLMActionSelector2:
                 return self.actions[i].name
         return "unknown"
 
+class LLMActionSelector3:
+    def __init__(self, actions: list[Action], model="llama3.1", api_url="http://localhost:11434/api/generate", debug=False):
+        self.debug = debug
+        self.model = model
+        self.api_url = api_url
+        self.actions = actions
+        
+        self.base_prompt_template = (
+"""You are an AI model tasked with classifying user's command into one of the following actions:  
+{action_list}
+- "unknown": If the user's command does not match any of the defined actions.
+
+Classification Rules:  
+1. If the user's command clearly refers to an action, return the appropriate action.  
+2. If user's command refers to any other device or topic, return only "unknown". Do not attempt to generalize.  
+3. You must not guess or infer new actions beyond the listed above.  
+4. Return only one of the predefined keywords without explanation.  
+
+User's command input and desired output examples:
+User's command -> Desired output:
+{examples}
+
+"""
+        )
+        self.prompt = self._generate_prompt()
+        
+    def update_actions(self, new_actions):
+        self.actions = new_actions
+        self.prompt = self._generate_prompt()
+    
+    def _generate_prompt(self):
+        action_list = "\n".join(f'- "{action.name}": {action.description}' for action in self.actions)
+        prefix = ["", "hãy ", "làm ơn ", "vui lòng "]
+        postfix = ["", " đi", " ngay", " giúp", " giúp tôi", " đê"]
+        examples = ""
+        examples += "\n".join(f'"{random.choice(prefix)}{action.keyword}{random.choice(postfix)}" -> "{action.name}"' for action in self.actions)
+        examples += '\n"bạn khoẻ không?" -> "unknown"\n' 
+        examples += "\n".join(f'"{random.choice(prefix)}{action.keyword}{random.choice(postfix)}" -> "{action.name}"' for action in self.actions)
+        examples += '\n"hôm nay thời tiết thế nào?" -> "unknown"' 
+        return self.base_prompt_template.format(action_list=action_list, examples=examples)
+    
+    def generate_action(self, user_command: str):
+        prompt = f'User\'s command: "{user_command.lower()}"\nDesired output: '
+        if self.debug:
+            print("[DEBUG] prompt: " + prompt)
+        data = {
+            "model": self.model,
+            "system": self.prompt,
+            "prompt": prompt,
+            "stream": False,
+            "options": {"temperature": 0.0}
+        }
+        try:
+            response = requests.post(self.api_url, json=data)
+            response.raise_for_status()
+            text = response.json().get('response')
+            if self.debug:
+                print("[DEBUG] response: " + text)
+            for action in self.actions:
+                if action.name in text:
+                    return action.name
+            return "unknown"
+        except requests.exceptions.RequestException as error:
+            return f"Error: {error}"
+        
 class WordsMatchingActionSelector:
     def __init__(self, actions: list[Action]):
         self.actions = actions
@@ -215,7 +280,7 @@ if __name__ == "__main__":
         ("nhạc dừng lại", "stop_music"),
     ]
 
-    models = ["llama3.1", "qwen2.5", "gemma3", "llama3.2", "phi4-mini", "smollm2"]
+    models = ["smollm2", "llama3.2", "phi4-mini", "qwen2.5", "llama3.1", "gemma3"]
 
     baseline_selector = WordsMatchingActionSelector(action_lst)
     baseline_correct = sum(
@@ -228,57 +293,37 @@ if __name__ == "__main__":
     wrong_details = []
 
     for model in models:
-        action_selector1 = LLMActionSelector(action_lst, model=model)
-        action_selector1.generate_action("bạn khoẻ không?")
+        action_selectors = [
+            LLMActionSelector(action_lst, model=model), 
+            LLMActionSelector2(action_lst, model=model), 
+            LLMActionSelector3(action_lst, model=model)
+        ]
         
-        action_selector2 = LLMActionSelector2(action_lst, model=model)
-        
-        accuracy1 = 0
-        accuracy2 = 0
-        wrong_result_selector1 = []
-        wrong_result_selector2 = []
-        
-        start_time = time()
-        for user_command, expected in tests:
-            result = action_selector1.generate_action(user_command)
-            if result == expected:
-                accuracy1 += 1
-            else:
-                wrong_result_selector1.append((user_command, result))
-        time1 = time() - start_time
+        for action_selector in action_selectors:
+            accuracy = 0
+            wrong_result = []
+            action_selector.generate_action("bạn khoẻ không?") # Warmup
+            start_time = time()
+            for user_command, expected in tests:
+                result = action_selector.generate_action(user_command)
+                if result == expected:
+                    accuracy += 1
+                else:
+                    wrong_result.append((user_command, result))
+            time1 = time() - start_time
 
-        start_time = time()
-        for user_command, expected in tests:
-            result = action_selector2.generate_action(user_command)
-            if result == expected:
-                accuracy2 += 1
-            else:
-                wrong_result_selector2.append((user_command, result))
-        time2 = time() - start_time
-
-        model_results.append({
-            "model": model,
-            "selector": "LLMActionSelector",
-            "accuracy": accuracy1 / len(tests),
-            "time": time1
-        })
-        model_results.append({
-            "model": model,
-            "selector": "LLMActionSelector2",
-            "accuracy": accuracy2 / len(tests),
-            "time": time2
-        })
+            model_results.append({
+                "model": model,
+                "selector": action_selector.__class__.__name__,
+                "accuracy": accuracy / len(tests),
+                "time": time1
+            })
         
-        wrong_details.append({
-            "model": model,
-            "selector": "LLMActionSelector",
-            "wrong_results": wrong_result_selector1
-        })
-        wrong_details.append({
-            "model": model,
-            "selector": "LLMActionSelector2",
-            "wrong_results": wrong_result_selector2
-        })
+            wrong_details.append({
+                "model": model,
+                "selector": action_selector.__class__.__name__,
+                "wrong_results": wrong_result
+            })
 
     md_lines = []
     md_lines.append("# Benchmark Results\n\n")
@@ -305,5 +350,5 @@ if __name__ == "__main__":
                 md_lines.append(f"| {user_command} | {generated} |\n")
             md_lines.append("\n")
 
-    with open("Benchmark.md", "w", encoding="utf-8") as file:
+    with open("Benchmark.md", "a", encoding="utf-8") as file:
         file.writelines(md_lines)
