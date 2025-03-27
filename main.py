@@ -7,9 +7,10 @@ from time import sleep, time
 from transformers import pipeline
 from ActionSelector import Action, WordsMatchingActionSelector
 from VietnameseTextToSpeech import VietnameseTextToSpeech
+import speech_recognition as sr
 
 class VoiceAssistant:
-    def __init__(self, sample_rate=16000, chunk_size=512, speech_threshold=0.5, silence_timeout=1.0, pre_buffer_max=16):
+    def __init__(self, sample_rate=16000, chunk_size=512, speech_threshold=0.5, silence_timeout=1.0, pre_buffer_max=32):
         self.debug = False
         self.sample_rate = sample_rate
         self.chunk_size = chunk_size
@@ -28,8 +29,9 @@ class VoiceAssistant:
         self.get_speech_timestamps = utils[0]
 
         # Load PhoWhisper ASR model
-        self.transcriber = pipeline("automatic-speech-recognition", model="vinai/PhoWhisper-medium")
-
+        # self.transcriber = pipeline("automatic-speech-recognition", model="vinai/PhoWhisper-small")
+        self.use_google = True
+        self.recognizer = sr.Recognizer()
         # Initialize PyAudio
         self.p = pyaudio.PyAudio()
         self.stream = self.p.open(
@@ -104,11 +106,24 @@ class VoiceAssistant:
             audio_tensor = torch.from_numpy(full_audio)
             torchaudio.save("temp.wav", audio_tensor.unsqueeze(0), self.sample_rate)
 
-        result = self.transcriber(full_audio)
-        print("Transcription:", result["text"])
+        
+        if self.use_google:
+            audio_bytes = (full_audio * 32767).astype(np.int16).tobytes()
+            audio_data = sr.AudioData(audio_bytes, sample_rate=16000, sample_width=2)
+            try:
+                transcription = self.recognizer.recognize_google(audio_data, language="vi-VN")
+            except:
+                print("Could not understand audio")
+                transcription = "unknown"
+            print("Transcription:", transcription)
+            transcription_text = transcription
+        else:
+            result = self.transcriber(full_audio)
+            print("Transcription:", result["text"])
+            transcription_text = result["text"]
 
         # Generate action
-        action = self.action_selector.generate_action(result["text"])
+        action = self.action_selector.generate_action(transcription_text)
         print("Action:", action)
         flag = False
         for act in self.action_lst:
