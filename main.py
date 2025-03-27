@@ -5,12 +5,15 @@ import pyaudio
 from queue import Queue
 from time import sleep, time
 from transformers import pipeline
-from ActionSelector import Action, WordsMatchingActionSelector
+from ActionSelector import Action, LLMActionSelector, WordsMatchingActionSelector
 from VietnameseTextToSpeech import VietnameseTextToSpeech
 import speech_recognition as sr
 
 class VoiceAssistant:
-    def __init__(self, sample_rate=16000, chunk_size=512, speech_threshold=0.5, silence_timeout=1.0, pre_buffer_max=32):
+    def __init__(self, sample_rate=16000, chunk_size=512, 
+                 speech_threshold=0.5, silence_timeout=1.0, 
+                 pre_buffer_max=32, model=None, api_url=None,
+                 use_google=True):
         self.debug = False
         self.sample_rate = sample_rate
         self.chunk_size = chunk_size
@@ -29,9 +32,13 @@ class VoiceAssistant:
         self.get_speech_timestamps = utils[0]
 
         # Load PhoWhisper ASR model
-        # self.transcriber = pipeline("automatic-speech-recognition", model="vinai/PhoWhisper-small")
-        self.use_google = True
-        self.recognizer = sr.Recognizer()
+        self.transcriber = None
+        
+        self.use_google = use_google
+        if use_google:
+            self.recognizer = sr.Recognizer()
+        else:
+            self.transcriber = pipeline("automatic-speech-recognition", model="vinai/PhoWhisper-medium")
         # Initialize PyAudio
         self.p = pyaudio.PyAudio()
         self.stream = self.p.open(
@@ -50,8 +57,14 @@ class VoiceAssistant:
             Action("turn_on_fan", "Turn on the fan", "bật quạt", "bật quạt"),
             Action("turn_off_fan", "Turn off the fan", "tắt quạt", "tắt quạt"),
         ]
-        self.action_selector = WordsMatchingActionSelector(self.action_lst)
-
+        if model is None and api_url is None:
+            self.action_selector = WordsMatchingActionSelector(self.action_lst)
+        else:
+            if api_url is None:
+                raise ValueError("api_url must be provided when using LLMActionSelector")
+            if model is None:
+                model = "llama3.2"
+            self.action_selector = LLMActionSelector(self.action_lst, model=model, api_url=api_url)
         self.tts = VietnameseTextToSpeech()
 
     def callback(self, in_data, frame_count, time_info, status):
