@@ -5,7 +5,7 @@ import pyaudio
 from queue import Queue
 from time import sleep, time
 from transformers import pipeline
-from ActionSelector import Action, LLMActionSelector
+from ActionSelector import Action, WordsMatchingActionSelector
 from VietnameseTextToSpeech import VietnameseTextToSpeech
 
 class VoiceAssistant:
@@ -43,12 +43,12 @@ class VoiceAssistant:
 
         # Initialize action selector
         self.action_lst = [
-            Action("turn_on_light", "Turn on the light", "bật đèn", "bật đèn lên giúp tôi", "bật đèn"),
-            Action("turn_off_light", "Turn off the light", "tắt đèn", "tắt đèn đi", "tắt đèn"),
-            Action("turn_on_fan", "Turn on the fan", "bật quạt", "làm ơn mở quạt", "bật quạt"),
-            Action("turn_off_fan", "Turn off the fan", "tắt quạt", "hãy tắt quạt ngay", "tắt quạt"),
+            Action("turn_on_light", "Turn on the light", "bật đèn", "bật đèn"),
+            Action("turn_off_light", "Turn off the light", "tắt đèn", "tắt đèn"),
+            Action("turn_on_fan", "Turn on the fan", "bật quạt", "bật quạt"),
+            Action("turn_off_fan", "Turn off the fan", "tắt quạt", "tắt quạt"),
         ]
-        self.action_selector = LLMActionSelector(self.action_lst)
+        self.action_selector = WordsMatchingActionSelector(self.action_lst)
 
         self.tts = VietnameseTextToSpeech()
 
