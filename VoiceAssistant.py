@@ -218,7 +218,11 @@ class VoiceAssistant:
             audio_data = sr.AudioData(byte_data,
                                     sample_rate=self.sample_rate,
                                     sample_width=2) 
-            result = self.recognizer.recognize_google(audio_data, language="vi-VN")
+            try:
+                result = self.recognizer.recognize_google(audio_data, language="vi-VN")
+            except:
+                print("Could not understand audio")
+                result = "unknown"
         print("Transcription:", result)
 
         # Generate action
